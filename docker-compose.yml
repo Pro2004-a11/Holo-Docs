@@ -1,0 +1,43 @@
+version: '3.9'
+
+services:
+  vision:
+    build: ./vision
+    ports:
+      - "8001:8001"
+    environment:
+      - ORCHESTRATOR_URL=http://server:8080
+    depends_on:
+      - server
+    restart: unless-stopped
+
+  server:
+    build: ./server
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - vision
+      - server
+    restart: unless-stopped
+
+  # Optional: uncomment for Phase 2 knowledge graph
+  # neo4j:
+  #   image: neo4j:5-community
+  #   ports:
+  #     - "7474:7474"
+  #     - "7687:7687"
+  #   environment:
+  #     - NEO4J_AUTH=neo4j/holodocs123
+  #   volumes:
+  #     - neo4j_data:/data
+
+# volumes:
+#   neo4j_data:

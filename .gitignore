@@ -1,0 +1,74 @@
+# --- General / OS ---
+.DS_Store
+Thumbs.db
+.env
+*.log
+.vscode/
+.idea/
+*.swp
+
+# --- Frontend (React / Vite / Three.js) ---
+/client/node_modules/
+/client/dist/
+/client/.env.local
+/client/.env.development.local
+/client/.env.test.local
+/client/.env.production.local
+/client/npm-debug.log*
+/client/yarn-error.log*
+
+# --- Orchestrator (Java / Spring Boot / Maven) ---
+/server/target/
+/server/!.mvn/wrapper/maven-wrapper.jar
+/server/bin/
+/server/.settings/
+/server/.classpath
+/server/.project
+/server/*.iml
+/server/*.ipr
+/server/*.iws
+
+# --- Vision Service (Python / FastAPI) ---
+/vision/__pycache__/
+/vision/*.py[cod]
+/vision/*$py.class
+/vision/.pytest_cache/
+/vision/venv/
+/vision/env/
+/vision/.env
+/vision/.venv/
+/vision/build/
+/vision/develop-eggs/
+/vision/dist/
+/vision/downloads/
+/vision/eggs/
+/vision/.eggs/
+/vision/lib/
+/vision/lib64/
+/vision/parts/
+/vision/sdist/
+/vision/var/
+/vision/wheels/
+/vision/*.egg-info/
+
+# --- Docker ---
+.docker/
+
+# --- Security & Environment ---
+# Ignore all .env files (root and subdirectories)
+.env
+.env.local
+.env.*
+!.env.example
+
+# --- Python Environment ---
+# Ignore the virtual environment folder
+venv/
+.venv/
+env/
+ENV/
+
+# Ignore python cache and build artifacts
+**/__pycache__/
+*.py[cod]
+*$py.class

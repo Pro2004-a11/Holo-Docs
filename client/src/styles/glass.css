@@ -1,0 +1,15 @@
+/* Glassmorphism design tokens */
+
+.glass-panel {
+  background: rgba(15, 15, 30, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+}
+
+.glass-panel--active {
+  border-color: rgba(90, 74, 255, 0.3);
+  box-shadow: 0 4px 24px rgba(90, 74, 255, 0.15);
+}

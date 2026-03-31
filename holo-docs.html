@@ -1,0 +1,1026 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Holo-Docs — Spatial Document Interface</title>
+<style>
+  /* ── Reset ── */
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: 'SF Mono', 'Fira Code', monospace; }
+
+  /* ── Scene Background ── */
+  body {
+    background: #06060f;
+    color: #e0e0ff;
+    cursor: none;
+  }
+
+  /* ── Grid Floor ── */
+  #grid-floor {
+    position: fixed; inset: 0;
+    background:
+      linear-gradient(rgba(90,74,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(90,74,255,0.03) 1px, transparent 1px);
+    background-size: 60px 60px;
+    transform-origin: center center;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Ambient Light Gradient (follows mouse) ── */
+  #ambient-light {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 1;
+    transition: background 0.3s ease;
+  }
+
+  /* ── 3D Perspective Container ── */
+  #scene {
+    position: fixed; inset: 0;
+    perspective: 1200px;
+    perspective-origin: 50% 50%;
+    z-index: 10;
+    transform-style: preserve-3d;
+  }
+
+  #scene-inner {
+    position: absolute; inset: 0;
+    transform-style: preserve-3d;
+    transition: transform 0.15s ease-out;
+  }
+
+  /* ── Document Card ── */
+  .doc-card {
+    position: absolute;
+    width: 240px;
+    min-height: 140px;
+    padding: 20px;
+    border-radius: 16px;
+    transform-style: preserve-3d;
+    cursor: none;
+    user-select: none;
+    transition: transform 0.08s ease-out, box-shadow 0.2s, border-color 0.2s;
+
+    /* Glassmorphism */
+    background: rgba(12, 12, 30, 0.65);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+
+  .doc-card::before {
+    content: '';
+    position: absolute; inset: 0;
+    border-radius: 16px;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(90,74,255,0.015) 2px,
+      rgba(90,74,255,0.015) 4px
+    );
+    animation: scanlines 8s linear infinite;
+    z-index: 1;
+  }
+
+  @keyframes scanlines {
+    from { background-position: 0 0; }
+    to { background-position: 0 100px; }
+  }
+
+  .doc-card.hovered {
+    border-color: rgba(90,74,255,0.35);
+    box-shadow: 0 8px 40px rgba(90,74,255,0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+  }
+
+  .doc-card.grabbed {
+    border-color: rgba(90,74,255,0.6);
+    box-shadow: 0 12px 48px rgba(90,74,255,0.25), inset 0 1px 0 rgba(255,255,255,0.08);
+    z-index: 100 !important;
+  }
+
+  .doc-card .card-type {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: rgba(90,74,255,0.7);
+    margin-bottom: 8px;
+  }
+
+  .doc-card .card-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: #e0e0ff;
+    margin-bottom: 10px;
+    font-family: system-ui, sans-serif;
+    line-height: 1.3;
+  }
+
+  .doc-card .card-meta {
+    font-size: 10px;
+    color: rgba(255,255,255,0.3);
+    display: flex;
+    gap: 12px;
+  }
+
+  .doc-card .card-id {
+    position: absolute;
+    top: 8px;
+    right: 12px;
+    font-size: 9px;
+    color: rgba(255,255,255,0.15);
+  }
+
+  .doc-card .grab-indicator {
+    position: absolute;
+    bottom: 8px;
+    right: 12px;
+    font-size: 9px;
+    color: rgba(90,74,255,0.8);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .doc-card.grabbed .grab-indicator { opacity: 1; }
+
+  /* ── Connection Lines Canvas ── */
+  #fx-canvas {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  /* ── Custom Cursor ── */
+  #gesture-cursor {
+    position: fixed;
+    pointer-events: none;
+    z-index: 1000;
+    transform: translate(-50%, -50%);
+    transition: left 0.04s ease-out, top 0.04s ease-out;
+  }
+
+  #cursor-ring {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(255,255,255,0.3);
+    transition: all 0.12s ease-out;
+    position: relative;
+  }
+
+  #cursor-ring.pinch {
+    width: 22px;
+    height: 22px;
+    border-color: #5a4aff;
+    background: rgba(90,74,255,0.15);
+    box-shadow: 0 0 16px rgba(90,74,255,0.3);
+  }
+
+  #cursor-ring.point {
+    border-color: rgba(255,255,255,0.5);
+  }
+
+  #cursor-dot {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 3px; height: 3px;
+    border-radius: 50%;
+    background: #fff;
+    transform: translate(-50%, -50%);
+    transition: opacity 0.1s;
+  }
+
+  #cursor-label {
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-top: 6px;
+    font-size: 9px;
+    color: rgba(255,255,255,0.4);
+    white-space: nowrap;
+    transition: opacity 0.2s;
+  }
+
+  /* ── Cursor Trail ── */
+  .trail-dot {
+    position: fixed;
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(90,74,255,0.4);
+    pointer-events: none;
+    z-index: 999;
+    transition: opacity 0.3s;
+  }
+
+  /* ── HUD: Status Bar ── */
+  #status-bar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 500;
+    display: flex;
+    gap: 28px;
+    padding: 10px 28px;
+    border-radius: 12px;
+    font-size: 11px;
+    color: rgba(255,255,255,0.55);
+    background: rgba(12,12,30,0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.06);
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+
+  #status-bar.visible { opacity: 1; }
+
+  .status-dot {
+    display: inline-block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+
+  .status-dot.ok { background: #4ade80; box-shadow: 0 0 6px rgba(74,222,128,0.4); }
+  .status-dot.off { background: #f87171; }
+
+  /* ── HUD: Info Panel (top-left) ── */
+  #info-panel {
+    position: fixed;
+    top: 20px; left: 20px;
+    z-index: 500;
+    padding: 16px 20px;
+    border-radius: 12px;
+    font-size: 11px;
+    line-height: 1.7;
+    color: rgba(255,255,255,0.45);
+    background: rgba(12,12,30,0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.05);
+    max-width: 200px;
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+  #info-panel.visible { opacity: 1; }
+  #info-panel kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.1);
+    font-size: 10px;
+    font-family: inherit;
+  }
+
+  /* ── HUD: Pipeline Latency (top-right) ── */
+  #latency-panel {
+    position: fixed;
+    top: 20px; right: 20px;
+    z-index: 500;
+    padding: 12px 18px;
+    border-radius: 12px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.4);
+    background: rgba(12,12,30,0.5);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255,255,255,0.05);
+    opacity: 0;
+    transition: opacity 0.5s;
+    line-height: 1.8;
+  }
+  #latency-panel.visible { opacity: 1; }
+  #latency-panel .val { color: rgba(90,74,255,0.8); font-weight: 600; }
+
+  /* ── Start Screen ── */
+  #start-screen {
+    position: fixed; inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(6,6,15,0.95);
+    transition: opacity 0.6s, visibility 0.6s;
+  }
+
+  #start-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+  }
+
+  #start-card {
+    text-align: center;
+    padding: 48px 64px;
+    border-radius: 20px;
+    background: rgba(12,12,30,0.7);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255,255,255,0.06);
+    box-shadow: 0 16px 64px rgba(0,0,0,0.5);
+  }
+
+  #start-card h1 {
+    font-size: 36px;
+    font-weight: 300;
+    font-family: system-ui, sans-serif;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, #e0e0ff, #5a4aff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  #start-card .subtitle {
+    font-size: 13px;
+    color: rgba(255,255,255,0.35);
+    margin-bottom: 32px;
+  }
+
+  #start-btn {
+    background: #5a4aff;
+    color: #fff;
+    border: none;
+    padding: 14px 40px;
+    border-radius: 10px;
+    font-size: 15px;
+    font-family: system-ui, sans-serif;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 4px 20px rgba(90,74,255,0.3);
+  }
+
+  #start-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(90,74,255,0.45);
+  }
+
+  #start-card .hint {
+    margin-top: 20px;
+    font-size: 10px;
+    color: rgba(255,255,255,0.2);
+  }
+
+  /* ── Particles ── */
+  .particle {
+    position: fixed;
+    width: 2px; height: 2px;
+    border-radius: 50%;
+    background: rgba(90,74,255,0.25);
+    pointer-events: none;
+    z-index: 2;
+  }
+</style>
+</head>
+<body>
+
+<!-- Background layers -->
+<div id="grid-floor"></div>
+<div id="ambient-light"></div>
+
+<!-- FX overlay canvas (connection lines, glow effects) -->
+<canvas id="fx-canvas"></canvas>
+
+<!-- 3D Scene -->
+<div id="scene">
+  <div id="scene-inner"></div>
+</div>
+
+<!-- Gesture cursor -->
+<div id="gesture-cursor">
+  <div id="cursor-ring">
+    <div id="cursor-dot"></div>
+  </div>
+  <div id="cursor-label"></div>
+</div>
+
+<!-- HUD -->
+<div id="info-panel">
+  <div><kbd>click+drag</kbd> grab card</div>
+  <div><kbd>hover</kbd> highlight</div>
+  <div><kbd>move</kbd> parallax</div>
+  <div style="margin-top:8px; font-size:9px; opacity:0.6;">
+    Simulates: webcam → MediaPipe → orchestrator → Three.js
+  </div>
+</div>
+
+<div id="latency-panel">
+  <div>vision  <span class="val" id="lat-vision">--</span> ms</div>
+  <div>bridge  <span class="val" id="lat-bridge">--</span> ms</div>
+  <div>render  <span class="val" id="lat-render">--</span> ms</div>
+  <div style="border-top:1px solid rgba(255,255,255,0.05); margin-top:4px; padding-top:4px;">
+    total   <span class="val" id="lat-total">--</span> ms
+  </div>
+  <div style="margin-top:6px; opacity:0.5;">frame <span id="frame-counter">0</span></div>
+</div>
+
+<div id="status-bar">
+  <span><span class="status-dot ok"></span>pipeline active</span>
+  <span>gesture: <span id="sb-gesture">idle</span></span>
+  <span>nodes: <span id="sb-nodes">0</span></span>
+  <span style="opacity:0.4;" id="sb-session">--</span>
+</div>
+
+<!-- Start screen -->
+<div id="start-screen">
+  <div id="start-card">
+    <h1>Holo-Docs</h1>
+    <div class="subtitle">spatial document interface</div>
+    <button id="start-btn" onclick="startSession()">Start Session</button>
+    <div class="hint">mouse simulates hand tracking gestures</div>
+  </div>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+// HOLO-DOCS: Self-contained spatial computing demo
+// Simulates the full Vision → Orchestrator → Render pipeline
+// ════════════════════════════════════════════════════════════════
+
+// ── Bridge Protocol Data Structures ──
+// Exact same shapes as the full-stack version
+
+const GESTURE_TYPES = {
+  IDLE: 'IDLE',
+  POINT: 'POINT',
+  PINCH: 'PINCH',
+  PINCH_RELEASE: 'PINCH_RELEASE',
+  SWIPE_LEFT: 'SWIPE_LEFT',
+  SWIPE_RIGHT: 'SWIPE_RIGHT',
+  OPEN_PALM: 'OPEN_PALM',
+};
+
+// ── Knowledge Graph: Demo Data ──
+
+const KNOWLEDGE_GRAPH = [
+  {
+    id: 'doc-1',
+    type: 'DOCUMENT',
+    title: 'Architecture Review',
+    nodeType: 'wiki',
+    connections: ['doc-2', 'doc-3', 'doc-5'],
+    position: [0, 0, 0],      // set dynamically
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  {
+    id: 'doc-2',
+    type: 'DOCUMENT',
+    title: 'API Specification',
+    nodeType: 'doc',
+    connections: ['doc-1', 'doc-4'],
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  {
+    id: 'doc-3',
+    type: 'DOCUMENT',
+    title: 'Sprint Backlog',
+    nodeType: 'task',
+    connections: ['doc-1', 'doc-6'],
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  {
+    id: 'doc-4',
+    type: 'DOCUMENT',
+    title: 'WebSocket Protocol',
+    nodeType: 'doc',
+    connections: ['doc-2'],
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  {
+    id: 'doc-5',
+    type: 'DOCUMENT',
+    title: 'CV Pipeline Design',
+    nodeType: 'wiki',
+    connections: ['doc-1', 'doc-7'],
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  {
+    id: 'doc-6',
+    type: 'DOCUMENT',
+    title: 'Q4 OKRs',
+    nodeType: 'task',
+    connections: ['doc-3'],
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+  {
+    id: 'doc-7',
+    type: 'DOCUMENT',
+    title: 'MediaPipe Integration',
+    nodeType: 'doc',
+    connections: ['doc-5', 'doc-2'],
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+  },
+];
+
+// ── Scene State ──
+
+const NODE_TYPE_LABELS = { wiki: 'wiki', doc: 'document', task: 'task' };
+
+const state = {
+  sessionId: crypto.randomUUID().slice(0, 8),
+  started: false,
+  frameSeq: 0,
+  mouseX: 0.5,
+  mouseY: 0.5,
+  mouseDown: false,
+  gesture: GESTURE_TYPES.IDLE,
+  hoveredNode: null,
+  grabbedNode: null,
+  grabOffset: { x: 0, y: 0 },
+  nodes: [],          // populated from KNOWLEDGE_GRAPH
+  lighting: { direction: [0, -1, 0.5], intensity: 0.8, color: [255, 244, 230] },
+  parallax: { x: 0, y: 0 },
+  trailPositions: [],  // cursor trail
+};
+
+// ── DOM References ──
+
+const sceneInner = document.getElementById('scene-inner');
+const fxCanvas = document.getElementById('fx-canvas');
+const fxCtx = fxCanvas.getContext('2d');
+const cursor = document.getElementById('gesture-cursor');
+const cursorRing = document.getElementById('cursor-ring');
+const cursorLabel = document.getElementById('cursor-label');
+const ambientLight = document.getElementById('ambient-light');
+const gridFloor = document.getElementById('grid-floor');
+
+// ── Initialize Scene ──
+
+function initScene() {
+  // Arrange nodes in a 3D constellation
+  const cx = window.innerWidth / 2;
+  const cy = window.innerHeight / 2;
+  const radius = Math.min(window.innerWidth, window.innerHeight) * 0.3;
+
+  state.nodes = KNOWLEDGE_GRAPH.map((def, i) => {
+    const angle = (i / KNOWLEDGE_GRAPH.length) * Math.PI * 2;
+    const layer = i % 2 === 0 ? 0 : 1;
+    const r = radius * (0.6 + layer * 0.4);
+
+    const node = {
+      ...def,
+      // Screen-space position
+      x: cx + Math.cos(angle) * r,
+      y: cy + Math.sin(angle) * r * 0.5 + (layer * -40),
+      z: -100 + Math.sin(angle * 2) * 80 + layer * 60,
+      // Animation targets
+      targetX: 0, targetY: 0, targetZ: 0,
+      // Visual state
+      state: 'IDLE',  // IDLE, HOVERED, GRABBED
+      grabbedBy: null,
+      el: null,       // DOM element
+      floatPhase: Math.random() * Math.PI * 2,
+      baseX: 0, baseY: 0, baseZ: 0,
+    };
+
+    node.targetX = node.x;
+    node.targetY = node.y;
+    node.targetZ = node.z;
+    node.baseX = node.x;
+    node.baseY = node.y;
+    node.baseZ = node.z;
+
+    return node;
+  });
+
+  // Create DOM elements for each node
+  state.nodes.forEach(createCardElement);
+}
+
+function createCardElement(node) {
+  const el = document.createElement('div');
+  el.className = 'doc-card';
+  el.dataset.id = node.id;
+
+  el.innerHTML = `
+    <div class="card-type">${NODE_TYPE_LABELS[node.nodeType] || node.nodeType}</div>
+    <div class="card-title">${node.title}</div>
+    <div class="card-meta">
+      <span>${node.connections.length} link${node.connections.length !== 1 ? 's' : ''}</span>
+    </div>
+    <div class="card-id">${node.id}</div>
+    <div class="grab-indicator">grabbed</div>
+  `;
+
+  sceneInner.appendChild(el);
+  node.el = el;
+}
+
+// ── Gesture System (Mouse → Gesture Events) ──
+// Simulates: Webcam Frame → MediaPipe → Gesture Classification
+
+function updateGesture() {
+  const prevGesture = state.gesture;
+
+  if (state.mouseDown && state.grabbedNode) {
+    state.gesture = GESTURE_TYPES.PINCH;
+  } else if (prevGesture === GESTURE_TYPES.PINCH && !state.mouseDown) {
+    state.gesture = GESTURE_TYPES.PINCH_RELEASE;
+  } else if (state.hoveredNode && !state.mouseDown) {
+    state.gesture = GESTURE_TYPES.POINT;
+  } else {
+    state.gesture = GESTURE_TYPES.IDLE;
+  }
+
+  // Build bridge protocol gesture event (logged to console for inspection)
+  if (state.frameSeq % 60 === 0) {
+    const gestureEvent = {
+      '$schema': 'bridge/gesture-event',
+      version: '1.0',
+      session_id: state.sessionId,
+      timestamp: Date.now(),
+      frame_seq: state.frameSeq,
+      hands: [{
+        handedness: 'RIGHT',
+        landmarks: {
+          index_tip: [state.mouseX, state.mouseY, 0],
+          thumb_tip: [state.mouseX - 0.01, state.mouseY + 0.01, 0],
+          wrist: [state.mouseX, state.mouseY + 0.15, 0],
+        },
+        gesture: {
+          type: state.gesture,
+          confidence: 0.93,
+          pinch_distance: state.mouseDown ? 0.01 : 0.08,
+        },
+      }],
+      head_pose: { pitch: 0, yaw: 0, roll: 0 },
+      light_vector: state.lighting,
+    };
+    console.log('[bridge] gesture event:', gestureEvent);
+  }
+}
+
+// ── Gesture Interpreter (Gesture → Scene Mutations) ──
+// Simulates: Java Orchestrator logic
+
+function applyGesture() {
+  const mx = state.mouseX * window.innerWidth;
+  const my = state.mouseY * window.innerHeight;
+
+  // Update lighting based on mouse position (simulating CV light estimation)
+  const lx = (state.mouseX - 0.5) * 2;
+  const ly = (state.mouseY - 0.5) * 2;
+  state.lighting.direction = [lx, -Math.abs(ly) - 0.3, 0.5];
+  state.lighting.intensity = 0.6 + (1 - state.mouseY) * 0.4;
+
+  // Find hovered node
+  state.hoveredNode = null;
+  for (const node of state.nodes) {
+    if (node.state === 'GRABBED') continue;
+    const dx = mx - node.x;
+    const dy = my - node.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 140) {
+      state.hoveredNode = node;
+      break;
+    }
+  }
+
+  // Handle gesture
+  if (state.gesture === GESTURE_TYPES.PINCH && state.grabbedNode) {
+    // Move grabbed node
+    state.grabbedNode.targetX = mx + state.grabOffset.x;
+    state.grabbedNode.targetY = my + state.grabOffset.y;
+    state.grabbedNode.state = 'GRABBED';
+  } else if (state.gesture === GESTURE_TYPES.PINCH_RELEASE && state.grabbedNode) {
+    // Release
+    state.grabbedNode.state = 'IDLE';
+    state.grabbedNode.grabbedBy = null;
+    state.grabbedNode.baseX = state.grabbedNode.x;
+    state.grabbedNode.baseY = state.grabbedNode.y;
+    state.grabbedNode = null;
+  }
+
+  // Update node visual states
+  for (const node of state.nodes) {
+    if (node === state.grabbedNode) {
+      node.state = 'GRABBED';
+    } else if (node === state.hoveredNode) {
+      node.state = 'HOVERED';
+    } else {
+      node.state = 'IDLE';
+    }
+  }
+
+  // Parallax from mouse (simulating head pose tracking)
+  state.parallax.x = (state.mouseX - 0.5) * 15;
+  state.parallax.y = (state.mouseY - 0.5) * 10;
+}
+
+// ── Renderer ──
+
+function render() {
+  const t = performance.now() / 1000;
+
+  // Parallax transform on scene
+  sceneInner.style.transform =
+    `rotateY(${state.parallax.x * 0.3}deg) rotateX(${-state.parallax.y * 0.3}deg)`;
+
+  // Grid parallax
+  const gx = state.parallax.x * 2;
+  const gy = state.parallax.y * 2;
+  gridFloor.style.backgroundPosition = `${gx}px ${gy}px`;
+
+  // Ambient light gradient
+  const lx = state.mouseX * 100;
+  const ly = state.mouseY * 100;
+  const li = state.lighting.intensity;
+  ambientLight.style.background = `radial-gradient(circle at ${lx}% ${ly}%,
+    rgba(90,74,255,${0.06 * li}) 0%,
+    rgba(60,50,180,${0.03 * li}) 30%,
+    transparent 70%)`;
+
+  // Update card positions and states
+  for (const node of state.nodes) {
+    // Gentle floating animation (skip if grabbed)
+    if (node.state !== 'GRABBED') {
+      node.targetX = node.baseX + Math.sin(t * 0.5 + node.floatPhase) * 6;
+      node.targetY = node.baseY + Math.cos(t * 0.7 + node.floatPhase) * 4;
+    }
+
+    // Lerp toward target
+    node.x += (node.targetX - node.x) * 0.12;
+    node.y += (node.targetY - node.y) * 0.12;
+    node.z += (node.targetZ - node.z) * 0.1;
+
+    // Apply transform to DOM element
+    const cardEl = node.el;
+    const px = state.parallax.x * (node.z / 300);
+    const py = state.parallax.y * (node.z / 300);
+
+    cardEl.style.transform =
+      `translate3d(${node.x - 120 + px}px, ${node.y - 70 + py}px, ${node.z}px)
+       rotateY(${state.parallax.x * 0.15}deg)
+       rotateX(${-state.parallax.y * 0.15}deg)`;
+
+    // Update CSS class for state
+    cardEl.className = 'doc-card ' + node.state.toLowerCase();
+  }
+
+  // Draw connection lines on canvas
+  drawConnections(t);
+
+  // Update cursor
+  updateCursor();
+
+  // Update HUD
+  updateHUD();
+}
+
+// ── Connection Lines (Canvas 2D) ──
+
+function drawConnections(t) {
+  fxCanvas.width = window.innerWidth;
+  fxCanvas.height = window.innerHeight;
+  fxCtx.clearRect(0, 0, fxCanvas.width, fxCanvas.height);
+
+  const drawn = new Set();
+
+  for (const node of state.nodes) {
+    for (const targetId of node.connections) {
+      const key = [node.id, targetId].sort().join('-');
+      if (drawn.has(key)) continue;
+      drawn.add(key);
+
+      const target = state.nodes.find(n => n.id === targetId);
+      if (!target) continue;
+
+      const ax = node.x, ay = node.y;
+      const bx = target.x, by = target.y;
+
+      // Determine if either end is hovered/grabbed
+      const active = node.state !== 'IDLE' || target.state !== 'IDLE';
+      const alpha = active ? 0.35 : 0.1;
+      const width = active ? 1.5 : 0.8;
+
+      // Animated dash
+      const dashOffset = t * 30;
+
+      fxCtx.beginPath();
+      fxCtx.moveTo(ax, ay);
+
+      // Slight curve for visual interest
+      const mx = (ax + bx) / 2;
+      const my = (ay + by) / 2 - 20;
+      fxCtx.quadraticCurveTo(mx, my, bx, by);
+
+      fxCtx.strokeStyle = `rgba(90, 74, 255, ${alpha})`;
+      fxCtx.lineWidth = width;
+      fxCtx.setLineDash([6, 8]);
+      fxCtx.lineDashOffset = -dashOffset;
+      fxCtx.stroke();
+
+      // Glow on active
+      if (active) {
+        fxCtx.strokeStyle = `rgba(90, 74, 255, ${alpha * 0.3})`;
+        fxCtx.lineWidth = width + 4;
+        fxCtx.setLineDash([]);
+        fxCtx.stroke();
+      }
+
+      // Node endpoint dots
+      fxCtx.setLineDash([]);
+      for (const [px, py] of [[ax, ay], [bx, by]]) {
+        fxCtx.beginPath();
+        fxCtx.arc(px, py, 2, 0, Math.PI * 2);
+        fxCtx.fillStyle = `rgba(90, 74, 255, ${alpha * 1.5})`;
+        fxCtx.fill();
+      }
+    }
+  }
+
+  // Cursor trail
+  drawTrail();
+}
+
+function drawTrail() {
+  const trail = state.trailPositions;
+  if (trail.length < 2) return;
+
+  for (let i = 1; i < trail.length; i++) {
+    const a = trail[i - 1];
+    const b = trail[i];
+    const progress = i / trail.length;
+    const alpha = progress * (state.gesture === GESTURE_TYPES.PINCH ? 0.4 : 0.15);
+
+    fxCtx.beginPath();
+    fxCtx.moveTo(a.x, a.y);
+    fxCtx.lineTo(b.x, b.y);
+    fxCtx.strokeStyle = `rgba(90, 74, 255, ${alpha})`;
+    fxCtx.lineWidth = progress * 2;
+    fxCtx.stroke();
+  }
+}
+
+// ── Cursor ──
+
+function updateCursor() {
+  const px = state.mouseX * window.innerWidth;
+  const py = state.mouseY * window.innerHeight;
+
+  cursor.style.left = px + 'px';
+  cursor.style.top = py + 'px';
+
+  // Ring state
+  cursorRing.className = '';
+  if (state.gesture === GESTURE_TYPES.PINCH) {
+    cursorRing.className = 'pinch';
+    cursorLabel.textContent = 'pinch';
+  } else if (state.gesture === GESTURE_TYPES.POINT) {
+    cursorRing.className = 'point';
+    cursorLabel.textContent = 'point';
+  } else {
+    cursorLabel.textContent = '';
+  }
+
+  // Trail
+  state.trailPositions.push({ x: px, y: py });
+  if (state.trailPositions.length > 20) state.trailPositions.shift();
+}
+
+// ── HUD ──
+
+function updateHUD() {
+  // Simulated latency (realistic-ish values)
+  const vision = 14 + Math.random() * 4;
+  const bridge = 1.5 + Math.random() * 1;
+  const renderMs = 2 + Math.random() * 1;
+  const total = vision + bridge + renderMs;
+
+  if (state.frameSeq % 10 === 0) {
+    document.getElementById('lat-vision').textContent = vision.toFixed(1);
+    document.getElementById('lat-bridge').textContent = bridge.toFixed(1);
+    document.getElementById('lat-render').textContent = renderMs.toFixed(1);
+    document.getElementById('lat-total').textContent = total.toFixed(1);
+    document.getElementById('frame-counter').textContent = state.frameSeq;
+    document.getElementById('sb-gesture').textContent = state.gesture.toLowerCase();
+    document.getElementById('sb-nodes').textContent = state.nodes.length;
+    document.getElementById('sb-session').textContent = state.sessionId;
+  }
+}
+
+// ── Input Handlers ──
+
+function onMouseMove(e) {
+  state.mouseX = e.clientX / window.innerWidth;
+  state.mouseY = e.clientY / window.innerHeight;
+}
+
+function onMouseDown(e) {
+  state.mouseDown = true;
+  const mx = e.clientX;
+  const my = e.clientY;
+
+  // Try to grab nearest node
+  if (state.hoveredNode) {
+    state.grabbedNode = state.hoveredNode;
+    state.grabbedNode.state = 'GRABBED';
+    state.grabbedNode.grabbedBy = 'RIGHT';
+    state.grabOffset.x = state.grabbedNode.x - mx;
+    state.grabOffset.y = state.grabbedNode.y - my;
+  }
+}
+
+function onMouseUp() {
+  state.mouseDown = false;
+  // Release will be handled in next updateGesture cycle
+}
+
+// ── Particle System ──
+
+function spawnParticles(count) {
+  for (let i = 0; i < count; i++) {
+    const el = document.createElement('div');
+    el.className = 'particle';
+    const x = Math.random() * window.innerWidth;
+    const y = Math.random() * window.innerHeight;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.opacity = (0.1 + Math.random() * 0.3).toString();
+    el.style.width = el.style.height = (1 + Math.random() * 2) + 'px';
+    document.body.appendChild(el);
+
+    // Slow drift animation
+    const drift = () => {
+      const dx = (Math.random() - 0.5) * 0.3;
+      const dy = -0.1 - Math.random() * 0.2;
+      el.style.left = (parseFloat(el.style.left) + dx) + 'px';
+      el.style.top = (parseFloat(el.style.top) + dy) + 'px';
+
+      // Wrap around
+      if (parseFloat(el.style.top) < -10) {
+        el.style.top = (window.innerHeight + 10) + 'px';
+        el.style.left = (Math.random() * window.innerWidth) + 'px';
+      }
+      requestAnimationFrame(drift);
+    };
+    setTimeout(drift, Math.random() * 2000);
+  }
+}
+
+// ── Main Loop ──
+
+function mainLoop() {
+  if (!state.started) return;
+  state.frameSeq++;
+
+  // Simulated pipeline: gesture detection → interpretation → render
+  updateGesture();
+  applyGesture();
+  render();
+
+  requestAnimationFrame(mainLoop);
+}
+
+// ── Session Start ──
+
+function startSession() {
+  state.started = true;
+
+  document.getElementById('start-screen').classList.add('hidden');
+  document.getElementById('status-bar').classList.add('visible');
+  document.getElementById('info-panel').classList.add('visible');
+  document.getElementById('latency-panel').classList.add('visible');
+
+  // Bind input
+  window.addEventListener('mousemove', onMouseMove);
+  window.addEventListener('mousedown', onMouseDown);
+  window.addEventListener('mouseup', onMouseUp);
+
+  // Handle resize
+  window.addEventListener('resize', () => {
+    fxCanvas.width = window.innerWidth;
+    fxCanvas.height = window.innerHeight;
+  });
+
+  initScene();
+  spawnParticles(40);
+  mainLoop();
+
+  console.log(`[holo-docs] Session started: ${state.sessionId}`);
+  console.log('[holo-docs] Bridge protocol messages logged every 60 frames');
+}
+
+// ── Resize canvas on load ──
+fxCanvas.width = window.innerWidth;
+fxCanvas.height = window.innerHeight;
+</script>
+</body>
+</html>
