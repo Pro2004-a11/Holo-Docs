@@ -17,35 +17,35 @@
 
 ---
 
-Holo-Docs 
+## Holo-Docs 
 
 A Gesture-Driven 3D Graph for Spatial Computing
 Holo-Docs is a high-performance spatial computing web application that replaces traditional "point-and-click" workflows with a gesture-driven 3D interface. a real-time computer vision and a distributed architecture, it allows users to manipulate document nodes in a 3D scene using natural hand movements.
 
-Key Features
+## Key Features
 
 Real-Time Gesture Orchestration: Low-latency (<33ms) pipeline for pinch-to-grab, swiping, and pointing interactions.
 Environmental Lighting Estimation: CV-driven light vector estimation that matches virtual 3D lighting to your real-world room conditions.
 
-Distributed Architecture:
+## Distributed Architecture:
 
 A stateless Python vision service coupled with a high-concurrency Java/Spring Boot orchestrator.
 Holographic HUD: A React-based "Glassmorphism" interface providing real-time tracking feedback and system status.
 
 responsiveness:
-
 Vision Service (Python): Processes raw webcam frames via MediaPipe to emit gesture events and light vectors.
 Orchestrator (Java 21): Manages the session state, scene graph transforms, and knowledge graph logic using Spring Boot.
 Frontend (React/Three.js): Renders the 3D environment and custom GLSL hologram shaders at 30Hz.
 
-Tech Stack
+## Tech Stack
 
 Frontend: React 18, Three.js, @react-three/fiber, Vite.
 Orchestrator: Java 21, Spring Boot 3.2, WebSockets (JSR 356).
 Vision: Python 3.10+, FastAPI, MediaPipe, OpenCV.
 Infrastructure: Docker Compose, Neo4j (Planned).
 
-Quick Start (Development)
+## Quick Start (Development)
+
 Requirements: Docker & Docker Compose, Webcam.
 Clone the repository:
 Bash
