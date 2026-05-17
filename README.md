@@ -86,5 +86,9 @@ Plaintext
 │   └── src/classifiers/ # Landmark-to-Gesture logic
 ├── docker-compose.yml   # Multi-service orchestration
 └── README.md
+```
 
+---
+
+<sub>🤖 Developed with assistance from [Claude Code](https://claude.com/claude-code).</sub>
 
